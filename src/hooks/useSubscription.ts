@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { STRIPE_CONFIG } from '../config/stripe';
 
 export function useSubscription() {
   const [loading, setLoading] = useState(false);
@@ -9,68 +8,35 @@ export function useSubscription() {
     try {
       setLoading(true);
       
-      const { data: { user } } = await supabase.auth.getUser();
+      // Generate a unique email for the trial user
+      const trialEmail = `trial_${Date.now()}@temp.auramind.app`;
+      const password = crypto.randomUUID();
       
-      if (!user) {
-        // Create a temporary user account
-        const email = `trial_${Date.now()}@temp.auramind.app`;
-        const password = crypto.randomUUID();
-        
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              trial_start: new Date().toISOString(),
-              trial_plan: plan,
-              trial_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-            }
+      const { data, error } = await supabase.auth.signUp({
+        email: trialEmail,
+        password,
+        options: {
+          data: {
+            trial_start: new Date().toISOString(),
+            trial_plan: plan,
+            trial_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
           }
-        });
-
-        if (error) throw error;
-        
-        // Store trial info in localStorage for persistence
-        localStorage.setItem('trial_info', JSON.stringify({
-          plan,
-          start: new Date().toISOString(),
-          end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        }));
-
-        return { success: true };
-      }
-      
-      return { success: false, error: 'User already exists' };
-    } catch (error) {
-      console.error('Trial start error:', error);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const createCheckoutSession = async (priceId: string) => {
-    try {
-      setLoading(true);
-      
-      const response = await fetch('/.netlify/functions/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          priceId,
-          successUrl: window.location.origin + '/success',
-          cancelUrl: window.location.origin + '/pricing',
-        }),
+        }
       });
 
-      const session = await response.json();
+      if (error) throw error;
       
-      window.location.href = session.url;
+      // Store trial info in localStorage
+      localStorage.setItem('trial_info', JSON.stringify({
+        plan,
+        start: new Date().toISOString(),
+        end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      }));
+
+      return { success: true, data };
     } catch (error) {
-      console.error('Subscription error:', error);
-      throw error;
+      console.error('Trial start error:', error);
+      return { success: false, error };
     } finally {
       setLoading(false);
     }
@@ -78,7 +44,6 @@ export function useSubscription() {
 
   return {
     loading,
-    startFreeTrial,
-    createCheckoutSession,
+    startFreeTrial
   };
 }
