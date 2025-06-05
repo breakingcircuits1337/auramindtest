@@ -35,8 +35,8 @@ const pricingPlans: PricingPlanProps[] = [
       { text: "Deep personalization", included: false },
       { text: "Advanced well-being features", included: false }
     ],
-    buttonText: "Start Free Trial",
-    productId: "basic_tier",
+    buttonText: "Subscribe Now",
+    productId: STRIPE_CONFIG.PRODUCTS.AURAMIND_BASIC.priceId,
     index: 0
   },
   {
@@ -58,8 +58,8 @@ const pricingPlans: PricingPlanProps[] = [
       { text: "Ad-free experience", included: true }
     ],
     popular: true,
-    buttonText: "Start Free Trial",
-    productId: "premium_tier",
+    buttonText: "Subscribe Now",
+    productId: STRIPE_CONFIG.PRODUCTS.AURAMIND_PREMIUM.priceId,
     index: 1
   }
 ];
