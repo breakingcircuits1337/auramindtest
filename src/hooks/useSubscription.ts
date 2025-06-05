@@ -1,42 +1,46 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { STRIPE_CONFIG } from '../config/stripe';
 
 export function useSubscription() {
   const [loading, setLoading] = useState(false);
 
-  const startFreeTrial = async (plan: 'basic' | 'premium') => {
+  const createCheckoutSession = async (priceId: string) => {
     try {
       setLoading(true);
+
+      const { data: { session } } = await supabase.auth.getSession();
       
-      // Generate a unique email for the trial user
-      const trialEmail = `trial_${Date.now()}@temp.auramind.app`;
-      const password = crypto.randomUUID();
-      
-      const { data, error } = await supabase.auth.signUp({
-        email: trialEmail,
-        password,
-        options: {
-          data: {
-            trial_start: new Date().toISOString(),
-            trial_plan: plan,
-            trial_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-          }
-        }
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          price_id: priceId,
+          success_url: `${window.location.origin}/success`,
+          cancel_url: `${window.location.origin}/pricing`,
+          mode: 'subscription'
+        }),
       });
 
-      if (error) throw error;
-      
-      // Store trial info in localStorage
-      localStorage.setItem('trial_info', JSON.stringify({
-        plan,
-        start: new Date().toISOString(),
-        end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      }));
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to create checkout session');
+      }
 
-      return { success: true, data };
+      const { url } = await response.json();
+      
+      // Redirect to Stripe Checkout
+      window.location.href = url;
     } catch (error) {
-      console.error('Trial start error:', error);
-      return { success: false, error };
+      console.error('Subscription error:', error);
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -44,6 +48,6 @@ export function useSubscription() {
 
   return {
     loading,
-    startFreeTrial
+    createCheckoutSession,
   };
 }
