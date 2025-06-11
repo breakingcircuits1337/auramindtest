@@ -18,3 +18,7 @@ args = "cd auramind-main && npm install && npm run dev"
 
 [deployment]
 run = ["sh", "-c", "npm run build"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80
