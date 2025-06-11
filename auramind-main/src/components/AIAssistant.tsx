@@ -25,11 +25,12 @@ const AIAssistant: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [showCalendarIntegration, setShowCalendarIntegration] = useState(false);
 
   useEffect(() => {
     const handleTranscript = (event: CustomEvent) => {
       const { text, interim } = event.detail;
-      
+
       // Only add final transcripts to chat history
       if (!interim && text.trim()) {
         const newMessage: Message = {
@@ -102,6 +103,7 @@ const AIAssistant: React.FC = () => {
 
       <AnimatePresence>
         {isOpen && (
+          <>
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -169,6 +171,14 @@ const AIAssistant: React.FC = () => {
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowCalendarIntegration(true)}
+                  className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  title="Calendar Integration"
+                >
+                  <Calendar size={20} />
+                </button>
+
                   <button className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
                     <Settings size={20} />
                   </button>
@@ -176,6 +186,9 @@ const AIAssistant: React.FC = () => {
               </div>
             </div>
           </motion.div>
+
+          
+        </>
         )}
       </AnimatePresence>
     </>

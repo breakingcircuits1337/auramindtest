@@ -149,6 +149,26 @@ class VoiceAssistant {
         description: "Check schedule and calendar events"
       },
       {
+        pattern: /^(schedule|book|create) (a )?(meeting|appointment) (with )?(.*) (at|for) (.+)/i,
+        handler: this.handleScheduleMeeting.bind(this),
+        description: "Schedule new meetings and appointments"
+      },
+      {
+        pattern: /^(check|find|look for) (scheduling )?conflicts? (for|with) (.+)/i,
+        handler: this.handleConflictCheck.bind(this),
+        description: "Check for scheduling conflicts"
+      },
+      {
+        pattern: /^(prepare|prep|get ready) for (my )?(next )?meeting/i,
+        handler: this.handleMeetingPrep.bind(this),
+        description: "Get meeting preparation assistance"
+      },
+      {
+        pattern: /^(when is|what time is) my (next|upcoming) (meeting|appointment)/i,
+        handler: this.handleNextMeeting.bind(this),
+        description: "Find next upcoming meeting"
+      },
+      {
         pattern: /^(set|create|add) (a )?(reminder|alert|notification) (.*) (at|for) (.+)/i,
         handler: this.handleSetReminder.bind(this),
         description: "Set reminders and alerts"
@@ -270,10 +290,228 @@ class VoiceAssistant {
   }
 
   private async handleScheduleQuery(matches: RegExpMatchArray, fullCommand: string): Promise<string> {
-    const timeframe = matches[4]?.trim() || 'today';
-    const response = `I would check your ${timeframe} schedule, but calendar integration isn't fully implemented yet. This would typically show your appointments, meetings, and scheduled tasks.`;
-    this.speak(response);
-    return response;
+    try {
+      const { calendarManager } = await import('./calendar');
+      const timeframe = matches[4]?.trim() || 'today';
+      
+      let startDate = new Date();
+      let endDate = new Date();
+      
+      if (timeframe.includes('today')) {
+        endDate.setHours(23, 59, 59, 999);
+      } else if (timeframe.includes('tomorrow')) {
+        startDate.setDate(startDate.getDate() + 1);
+        endDate.setDate(endDate.getDate() + 1);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+      } else if (timeframe.includes('week')) {
+        endDate.setDate(endDate.getDate() + 7);
+      }
+      
+      const events = calendarManager.getEvents(startDate, endDate);
+      
+      if (events.length === 0) {
+        const response = `You have no scheduled events ${timeframe}. Your schedule is completely free!`;
+        this.speak(response);
+        return response;
+      }
+      
+      const eventSummary = events.slice(0, 5).map(event => {
+        const time = event.start.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        });
+        return `${event.title} at ${time}`;
+      }).join(', ');
+      
+      const response = `You have ${events.length} event${events.length > 1 ? 's' : ''} ${timeframe}: ${eventSummary}${events.length > 5 ? ' and more' : ''}`;
+      this.speak(response);
+      return response;
+    } catch (error) {
+      const response = `I would check your ${matches[4]?.trim() || 'today'} schedule, but calendar integration isn't fully connected yet. This would typically show your appointments, meetings, and scheduled tasks.`;
+      this.speak(response);
+      return response;
+    }
+  }
+
+  private async handleScheduleMeeting(matches: RegExpMatchArray, fullCommand: string): Promise<string> {
+    try {
+      const { calendarManager } = await import('./calendar');
+      const participant = matches[5]?.trim() || '';
+      const timeSpec = matches[7]?.trim() || '';
+      
+      // Parse the time specification (simplified)
+      const meetingTime = this.parseTimeSpecification(timeSpec);
+      
+      if (!meetingTime) {
+        const response = `I couldn't understand the time specification. Please try saying something like "schedule a meeting with John at 3 PM tomorrow"`;
+        this.speak(response);
+        return response;
+      }
+      
+      // Create a temporary event to check for conflicts
+      const tempEvent = {
+        title: participant ? `Meeting with ${participant}` : 'New Meeting',
+        start: meetingTime,
+        end: new Date(meetingTime.getTime() + 60 * 60 * 1000), // 1 hour default
+        attendees: participant ? [participant] : [],
+      };
+      
+      const conflictCheck = calendarManager.detectConflicts(tempEvent);
+      
+      if (conflictCheck.hasConflict) {
+        const response = `I found a scheduling conflict: ${conflictCheck.suggestion} Would you like me to suggest alternative times?`;
+        this.speak(response);
+        return response;
+      }
+      
+      const response = `I would schedule the meeting${participant ? ` with ${participant}` : ''} for ${timeSpec}, but full calendar integration isn't implemented yet. No conflicts detected for that time slot.`;
+      this.speak(response);
+      return response;
+    } catch (error) {
+      const response = `I would schedule that meeting, but calendar integration isn't fully implemented yet. This would typically create a new calendar event and check for conflicts.`;
+      this.speak(response);
+      return response;
+    }
+  }
+
+  private async handleConflictCheck(matches: RegExpMatchArray, fullCommand: string): Promise<string> {
+    try {
+      const { calendarManager } = await import('./calendar');
+      const timeSpec = matches[4]?.trim() || '';
+      
+      const meetingTime = this.parseTimeSpecification(timeSpec);
+      
+      if (!meetingTime) {
+        const response = `Please specify a time to check for conflicts, like "check conflicts for 2 PM tomorrow"`;
+        this.speak(response);
+        return response;
+      }
+      
+      const tempEvent = {
+        title: 'Conflict Check',
+        start: meetingTime,
+        end: new Date(meetingTime.getTime() + 60 * 60 * 1000),
+      };
+      
+      const conflictCheck = calendarManager.detectConflicts(tempEvent);
+      
+      const response = conflictCheck.hasConflict 
+        ? `Conflict detected for ${timeSpec}: ${conflictCheck.suggestion}`
+        : `No conflicts found for ${timeSpec}. That time slot is available.`;
+      
+      this.speak(response);
+      return response;
+    } catch (error) {
+      const response = `I would check for scheduling conflicts, but calendar integration isn't fully connected yet. This would typically analyze your calendar for overlapping events.`;
+      this.speak(response);
+      return response;
+    }
+  }
+
+  private async handleMeetingPrep(matches: RegExpMatchArray, fullCommand: string): Promise<string> {
+    try {
+      const { calendarManager } = await import('./calendar');
+      const upcomingEvents = calendarManager.getUpcomingEvents(2); // Next 2 hours
+      
+      if (upcomingEvents.length === 0) {
+        const response = `You don't have any upcoming meetings in the next 2 hours. Your schedule is clear!`;
+        this.speak(response);
+        return response;
+      }
+      
+      const nextMeeting = upcomingEvents[0];
+      const timeUntilMeeting = Math.floor((nextMeeting.start.getTime() - new Date().getTime()) / (1000 * 60));
+      
+      const response = `Your next meeting is "${nextMeeting.title}" in ${timeUntilMeeting} minutes. In production, I would help you prepare with agenda review, document gathering, and key talking points.`;
+      this.speak(response);
+      return response;
+    } catch (error) {
+      const response = `I would help you prepare for your next meeting, but calendar integration isn't fully connected yet. This would typically provide meeting preparation assistance including agenda review and document gathering.`;
+      this.speak(response);
+      return response;
+    }
+  }
+
+  private async handleNextMeeting(matches: RegExpMatchArray, fullCommand: string): Promise<string> {
+    try {
+      const { calendarManager } = await import('./calendar');
+      const upcomingEvents = calendarManager.getUpcomingEvents(24); // Next 24 hours
+      
+      if (upcomingEvents.length === 0) {
+        const response = `You don't have any meetings scheduled for the next 24 hours.`;
+        this.speak(response);
+        return response;
+      }
+      
+      const nextMeeting = upcomingEvents[0];
+      const timeUntilMeeting = Math.floor((nextMeeting.start.getTime() - new Date().getTime()) / (1000 * 60));
+      const meetingTime = nextMeeting.start.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+      
+      const response = timeUntilMeeting < 60 
+        ? `Your next meeting is "${nextMeeting.title}" in ${timeUntilMeeting} minutes`
+        : `Your next meeting is "${nextMeeting.title}" at ${meetingTime}`;
+      
+      this.speak(response);
+      return response;
+    } catch (error) {
+      const response = `I would check your next meeting, but calendar integration isn't fully connected yet. This would typically show your upcoming appointments.`;
+      this.speak(response);
+      return response;
+    }
+  }
+
+  private parseTimeSpecification(timeSpec: string): Date | null {
+    // Simplified time parsing - in production, use a more robust library
+    const now = new Date();
+    const timeSpecLower = timeSpec.toLowerCase();
+    
+    // Handle "tomorrow at X"
+    if (timeSpecLower.includes('tomorrow')) {
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const timeMatch = timeSpecLower.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+      if (timeMatch) {
+        let hour = parseInt(timeMatch[1]);
+        const minute = parseInt(timeMatch[2]) || 0;
+        const ampm = timeMatch[3];
+        
+        if (ampm === 'pm' && hour !== 12) hour += 12;
+        if (ampm === 'am' && hour === 12) hour = 0;
+        
+        tomorrow.setHours(hour, minute, 0, 0);
+        return tomorrow;
+      }
+    }
+    
+    // Handle "today at X" or just time
+    const timeMatch = timeSpecLower.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (timeMatch) {
+      const today = new Date(now);
+      let hour = parseInt(timeMatch[1]);
+      const minute = parseInt(timeMatch[2]) || 0;
+      const ampm = timeMatch[3];
+      
+      if (ampm === 'pm' && hour !== 12) hour += 12;
+      if (ampm === 'am' && hour === 12) hour = 0;
+      
+      today.setHours(hour, minute, 0, 0);
+      
+      // If the time has passed today, assume tomorrow
+      if (today <= now) {
+        today.setDate(today.getDate() + 1);
+      }
+      
+      return today;
+    }
+    
+    return null;
   }
 
   private async handleSetReminder(matches: RegExpMatchArray, fullCommand: string): Promise<string> {
