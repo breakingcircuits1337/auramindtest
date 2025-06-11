@@ -1,4 +1,4 @@
-import { generateResponse } from './gemini';
+import { generateResponse, aiManager } from './gemini';
 
 interface CommandRoute {
   pattern: RegExp;
@@ -191,19 +191,82 @@ class VoiceAssistant {
         }
       }
 
-      // If no specific route matches, use general AI response
-      const context = this.conversationContext.slice(-5).join('\n');
-      const contextualCommand = context ? `Context:\n${context}\n\nCurrent: ${command}` : command;
+      // If no specific route matches, use enhanced AI response with context
+      const currentTask = this.getCurrentTaskContext(command);
+      const timeContext = this.getTimeContext();
       
-      const response = await generateResponse(contextualCommand);
+      const responseContext = {
+        conversationHistory: this.getFormattedConversationHistory(),
+        currentTask,
+        timeContext,
+        userProfile: {
+          preferences: this.getUserPreferences(),
+          communicationStyle: 'concise' as const,
+          expertise: []
+        }
+      };
+      
+      const response = await generateResponse(command, responseContext);
       this.speak(response);
       return response;
     } catch (error) {
       console.error('Error processing command:', error);
-      const errorMessage = "I'm sorry, I encountered an error processing your request.";
+      const errorMessage = this.getContextualErrorMessage();
       this.speak(errorMessage);
       return errorMessage;
     }
+  }
+
+  private getCurrentTaskContext(command: string): string {
+    const commandLower = command.toLowerCase();
+    if (commandLower.includes('schedule') || commandLower.includes('calendar')) {
+      return 'schedule_management';
+    }
+    if (commandLower.includes('reminder') || commandLower.includes('remind')) {
+      return 'reminder_setting';
+    }
+    if (commandLower.includes('email') || commandLower.includes('message')) {
+      return 'communication_management';
+    }
+    return 'general_assistance';
+  }
+
+  private getTimeContext(): string {
+    const now = new Date();
+    const hour = now.getHours();
+    const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' });
+    const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+    
+    return `${timeOfDay} on ${dayOfWeek}`;
+  }
+
+  private getFormattedConversationHistory(): any[] {
+    return this.conversationContext.slice(-6).map((msg, index) => {
+      const [role, content] = msg.split(': ', 2);
+      return {
+        role: role.toLowerCase() === 'user' ? 'user' : 'assistant',
+        content: content || msg,
+        timestamp: new Date(Date.now() - (this.conversationContext.length - index) * 60000)
+      };
+    });
+  }
+
+  private getUserPreferences(): string[] {
+    // In a real implementation, this would come from user profile data
+    return ['productivity_focused', 'concise_responses', 'proactive_suggestions'];
+  }
+
+  private getContextualErrorMessage(): string {
+    const timeOfDay = new Date().getHours() < 12 ? 'morning' : 
+                     new Date().getHours() < 17 ? 'afternoon' : 'evening';
+    
+    const messages = [
+      `I apologize, but I'm having some technical difficulties this ${timeOfDay}. Let me try to help you in a different way.`,
+      "I encountered an issue processing your request. Could you try rephrasing it?",
+      "Sorry about that technical hiccup. I'm here to help - what would you like to try?"
+    ];
+    
+    return messages[Math.floor(Math.random() * messages.length)];
   }
 
   private async handleScheduleQuery(matches: RegExpMatchArray, fullCommand: string): Promise<string> {
@@ -323,6 +386,18 @@ class VoiceAssistant {
 
   public getContext(): string[] {
     return [...this.conversationContext];
+  }
+
+  public getAIConversationHistory() {
+    return aiManager.getConversationHistory();
+  }
+
+  public getAIContextSummary(): string {
+    return aiManager.getContextSummary();
+  }
+
+  public clearAIHistory(): void {
+    aiManager.clearHistory();
   }
 
   public processSpeechFile(audioFile: File): Promise<string> {
