@@ -12,8 +12,14 @@ import Footer from './components/Footer';
 import AIAssistant from './components/AIAssistant';
 import { ThemeProvider } from './components/ThemeProvider';
 import ErrorBoundary from './components/ErrorBoundary';
+import { ENV_CONFIG } from './lib/env';
 
 function App() {
+  // Log environment warnings in development
+  if (import.meta.env.DEV && ENV_CONFIG.warnings.length > 0) {
+    console.warn('App initialized with environment warnings:', ENV_CONFIG.warnings);
+  }
+
   return (
     <ErrorBoundary>
       <ThemeProvider>
