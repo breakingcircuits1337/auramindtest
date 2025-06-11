@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import { 
@@ -13,50 +13,15 @@ import {
   Zap,
   Trash2,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Plus,
+  Bell,
+  Target,
+  TrendingUp,
+  CalendarDays,
+  Timer
 } from 'lucide-react';
-
-interface Task {
-  id: string;
-  title: string;
-  priority: 'high' | 'medium' | 'low';
-  energyLevel: 'high' | 'medium' | 'low';
-  duration: number;
-  category: string;
-  delegateTo?: string;
-  completed: boolean;
-}
-
-const mockTasks: Task[] = [
-  {
-    id: '1',
-    title: 'Review quarterly presentation',
-    priority: 'high',
-    energyLevel: 'high',
-    duration: 60,
-    category: 'Work',
-    completed: false
-  },
-  {
-    id: '2',
-    title: 'Team sync meeting',
-    priority: 'medium',
-    energyLevel: 'medium',
-    duration: 30,
-    category: 'Work',
-    completed: false
-  },
-  {
-    id: '3',
-    title: 'Plan weekly meal prep',
-    priority: 'low',
-    energyLevel: 'low',
-    duration: 20,
-    category: 'Personal',
-    delegateTo: 'Family',
-    completed: false
-  }
-];
+import { taskManager, Task, DailyPlan } from '../lib/taskManager';
 
 interface TaskManagerProps {
   currentEnergyLevel: 'high' | 'medium' | 'low';
@@ -71,11 +36,35 @@ const TaskManager: React.FC<TaskManagerProps> = ({
   focusModeActive,
   setFocusModeActive
 }) => {
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [dailyPlan, setDailyPlan] = useState<DailyPlan | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [recommendations, setRecommendations] = useState<Task[]>([]);
   const [ref, inView] = useInView({
     triggerOnce: true,
     threshold: 0.1,
   });
+
+  useEffect(() => {
+    // Load tasks and daily plan
+    const allTasks = taskManager.getAllTasks();
+    setTasks(allTasks);
+    
+    const plan = taskManager.getDailyPlan(selectedDate) || taskManager.createDailyPlan(selectedDate);
+    setDailyPlan(plan);
+    
+    // Get energy-based recommendations
+    const recs = taskManager.getEnergyBasedRecommendations(currentEnergyLevel);
+    setRecommendations(recs);
+  }, [selectedDate, currentEnergyLevel]);
+
+  useEffect(() => {
+    // Update recommendations when energy level changes
+    const recs = taskManager.getEnergyBasedRecommendations(currentEnergyLevel);
+    setRecommendations(recs);
+  }, [currentEnergyLevel]);
 
   const getEnergyLevelColor = (level: 'high' | 'medium' | 'low') => {
     switch (level) {
@@ -94,37 +83,60 @@ const TaskManager: React.FC<TaskManagerProps> = ({
   };
 
   const addTask = useCallback((title: string) => {
-    const newTask: Task = {
-      id: Date.now().toString(),
+    const newTask = taskManager.createTask({
       title,
       priority: 'medium',
       energyLevel: currentEnergyLevel,
       duration: 30,
-      category: 'Personal',
-      completed: false
-    };
-    setTasks(prev => [...prev, newTask]);
+      category: 'Personal'
+    });
+    setTasks(taskManager.getAllTasks());
+    setNewTaskTitle('');
+    setShowCreateModal(false);
   }, [currentEnergyLevel]);
 
   const deleteTask = useCallback((taskId: string) => {
-    setTasks(prev => prev.filter(task => task.id !== taskId));
+    taskManager.deleteTask(taskId);
+    setTasks(taskManager.getAllTasks());
   }, []);
 
   const toggleTaskCompletion = useCallback((taskId: string) => {
-    setTasks(prev => prev.map(task => 
-      task.id === taskId ? { ...task, completed: !task.completed } : task
-    ));
+    const task = taskManager.getTask(taskId);
+    if (task) {
+      if (task.status === 'completed') {
+        taskManager.updateTask(taskId, { status: 'pending' });
+      } else {
+        taskManager.completeTask(taskId);
+      }
+      setTasks(taskManager.getAllTasks());
+    }
   }, []);
 
   const setTaskPriority = useCallback((taskId: string, priority: 'high' | 'medium' | 'low') => {
-    setTasks(prev => prev.map(task =>
-      task.id === taskId ? { ...task, priority } : task
-    ));
+    taskManager.updateTask(taskId, { priority });
+    setTasks(taskManager.getAllTasks());
+  }, []);
+
+  const scheduleTask = useCallback((taskId: string, time: Date) => {
+    if (taskManager.scheduleTask(taskId, time)) {
+      setTasks(taskManager.getAllTasks());
+      const plan = taskManager.getDailyPlan(selectedDate) || taskManager.createDailyPlan(selectedDate);
+      setDailyPlan(plan);
+    }
+  }, [selectedDate]);
+
+  const createReminder = useCallback((taskId: string, minutes: number) => {
+    const reminderTime = new Date(Date.now() + minutes * 60000);
+    taskManager.createReminder(taskId, {
+      type: 'time_based',
+      triggerTime: reminderTime,
+      message: `Don't forget: ${taskManager.getTask(taskId)?.title}`
+    });
   }, []);
 
   const getOptimalTasks = () => {
     return tasks.filter(task => 
-      !task.completed && 
+      task.status === 'pending' && 
       (focusModeActive ? task.priority === 'high' : true) &&
       (currentEnergyLevel === 'low' ? task.energyLevel !== 'high' : true)
     ).sort((a, b) => {
@@ -189,6 +201,81 @@ const TaskManager: React.FC<TaskManagerProps> = ({
         </div>
       </div>
 
+      {/* Add Task Button */}
+      <div className="mb-6">
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-primary-600 dark:bg-primary-500 text-white rounded-lg hover:bg-primary-700 dark:hover:bg-primary-600 transition-colors"
+        >
+          <Plus size={18} />
+          Add New Task
+        </button>
+      </div>
+
+      {/* Daily Plan Overview */}
+      {dailyPlan && (
+        <div className="mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <CalendarDays size={18} />
+              Today's Plan
+            </h3>
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              {dailyPlan.totalEstimatedTime} minutes total
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="text-center">
+              <div className="text-error-500 dark:text-error-400 font-medium">
+                {dailyPlan.priorityDistribution.high}
+              </div>
+              <div className="text-gray-500 dark:text-gray-400">High Priority</div>
+            </div>
+            <div className="text-center">
+              <div className="text-warning-500 dark:text-warning-400 font-medium">
+                {dailyPlan.priorityDistribution.medium}
+              </div>
+              <div className="text-gray-500 dark:text-gray-400">Medium Priority</div>
+            </div>
+            <div className="text-center">
+              <div className="text-success-500 dark:text-success-400 font-medium">
+                {dailyPlan.priorityDistribution.low}
+              </div>
+              <div className="text-gray-500 dark:text-gray-400">Low Priority</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Energy-Based Recommendations */}
+      {recommendations.length > 0 && (
+        <div className="mb-8 p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg border border-primary-100 dark:border-primary-800">
+          <div className="flex items-center gap-2 mb-3">
+            <Target size={16} className="text-primary-600 dark:text-primary-400" />
+            <span className="font-medium text-primary-700 dark:text-primary-300">
+              Recommended for Your Current Energy Level ({currentEnergyLevel})
+            </span>
+          </div>
+          <div className="space-y-2">
+            {recommendations.slice(0, 3).map((task) => (
+              <div key={task.id} className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded-md">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">{task.title}</span>
+                  <span className={`text-xs px-2 py-1 rounded ${getPriorityColor(task.priority)} bg-opacity-10`}>
+                    {task.priority}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <Clock size={12} />
+                  {task.duration}m
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Task List */}
       <div className="space-y-4">
         {getOptimalTasks().map((task) => (
           <div
@@ -198,12 +285,12 @@ const TaskManager: React.FC<TaskManagerProps> = ({
             <button
               onClick={() => toggleTaskCompletion(task.id)}
               className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                task.completed
+                task.status === 'completed'
                   ? 'bg-primary-500 dark:bg-primary-600 border-primary-500 dark:border-primary-600'
                   : 'border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400'
               }`}
             >
-              {task.completed && <CheckCircle2 size={16} className="text-white" />}
+              {task.status === 'completed' && <CheckCircle2 size={16} className="text-white" />}
             </button>
             
             <div className="flex-grow">
@@ -247,10 +334,30 @@ const TaskManager: React.FC<TaskManagerProps> = ({
                     {task.delegateTo}
                   </div>
                 )}
+                {task.dueDate && (
+                  <div className="flex items-center gap-1">
+                    <Calendar size={14} />
+                    {task.dueDate.toLocaleDateString()}
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => createReminder(task.id, 30)}
+                className="p-2 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                title="Set 30min reminder"
+              >
+                <Bell size={16} />
+              </button>
+              <button
+                onClick={() => scheduleTask(task.id, new Date(Date.now() + 3600000))}
+                className="p-2 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                title="Schedule for 1 hour from now"
+              >
+                <Timer size={16} />
+              </button>
               {task.delegateTo && (
                 <button className="px-3 py-1 text-sm text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/50 rounded-md transition-colors">
                   Delegate
@@ -266,6 +373,41 @@ const TaskManager: React.FC<TaskManagerProps> = ({
           </div>
         ))}
       </div>
+
+      {/* Create Task Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-90vw">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Create New Task</h3>
+            <input
+              type="text"
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              placeholder="Enter task title..."
+              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => addTask(newTaskTitle)}
+                disabled={!newTaskTitle.trim()}
+                className="flex-1 py-2 px-4 bg-primary-600 dark:bg-primary-500 text-white rounded-lg hover:bg-primary-700 dark:hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Create Task
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setNewTaskTitle('');
+                }}
+                className="flex-1 py-2 px-4 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-8 p-4 bg-primary-50 dark:bg-primary-900/50 rounded-lg border border-primary-100 dark:border-primary-800">
         <div className="flex items-center gap-2 mb-2">

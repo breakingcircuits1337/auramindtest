@@ -10,6 +10,7 @@ import Challenges from './components/Challenges';
 import CTA from './components/CTA';
 import Footer from './components/Footer';
 import AIAssistant from './components/AIAssistant';
+import ReminderSystem from './components/ReminderNotification';
 import { ThemeProvider } from './components/ThemeProvider';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ENV_CONFIG } from './lib/env';
@@ -35,6 +36,7 @@ function App() {
           <CTA />
           <Footer />
           <AIAssistant />
+          <ReminderSystem />
         </div>
       </ThemeProvider>
     </ErrorBoundary>
