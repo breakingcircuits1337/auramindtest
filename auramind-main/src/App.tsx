@@ -11,24 +11,27 @@ import CTA from './components/CTA';
 import Footer from './components/Footer';
 import AIAssistant from './components/AIAssistant';
 import { ThemeProvider } from './components/ThemeProvider';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   return (
-    <ThemeProvider>
-      <div className="font-sans dark:bg-gray-900">
-        <Navbar />
-        <Hero />
-        <Features />
-        <UserStories />
-        <Technology />
-        <Roadmap />
-        <Pricing />
-        <Challenges />
-        <CTA />
-        <Footer />
-        <AIAssistant />
-      </div>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <div className="font-sans dark:bg-gray-900">
+          <Navbar />
+          <Hero />
+          <Features />
+          <UserStories />
+          <Technology />
+          <Roadmap />
+          <Pricing />
+          <Challenges />
+          <CTA />
+          <Footer />
+          <AIAssistant />
+        </div>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

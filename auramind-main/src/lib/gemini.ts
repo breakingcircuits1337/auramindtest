@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GOOGLE_API_KEY || 'dummy-key');
+const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 const SYSTEM_PROMPT = `You are AuraMind, an advanced AI voice assistant. Your responses should be:
 - Concise and direct
@@ -19,7 +20,7 @@ Keep responses under 100 words unless more detail is specifically requested.`;
 export async function generateResponse(prompt: string): Promise<string> {
   try {
     // In development, return mock responses if no API key is present
-    if (!import.meta.env.VITE_GOOGLE_API_KEY) {
+    if (!genAI || !import.meta.env.VITE_GOOGLE_API_KEY) {
       return getMockResponse(prompt);
     }
 
