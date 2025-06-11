@@ -28,13 +28,18 @@ const AIAssistant: React.FC = () => {
 
   useEffect(() => {
     const handleTranscript = (event: CustomEvent) => {
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        text: event.detail,
-        type: 'user',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, newMessage]);
+      const { text, interim } = event.detail;
+      
+      // Only add final transcripts to chat history
+      if (!interim && text.trim()) {
+        const newMessage: Message = {
+          id: Date.now().toString(),
+          text: text,
+          type: 'user',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, newMessage]);
+      }
     };
 
     const handleResponse = (event: CustomEvent) => {
